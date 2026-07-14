@@ -129,6 +129,11 @@ export function EstimatorFlow() {
     prefilled.current = true
     const params = new URLSearchParams(window.location.search)
     const requestedStyle = params.get("style")
+    const requestedSqft = Number(params.get("sqft"))
+    const sqftFromParam =
+      Number.isFinite(requestedSqft) && requestedSqft >= 1200 && requestedSqft <= 8000
+        ? Math.round(requestedSqft / 100) * 100
+        : null
     setState((current) => ({
       ...current,
       ...(profile.region ? { region: profile.region } : {}),
@@ -137,6 +142,7 @@ export function EstimatorFlow() {
       ...(profile.timeline ? { timeline: profile.timeline } : {}),
       ...(profile.style && STYLE_NAMES[profile.style] ? { style: profile.style } : {}),
       ...(requestedStyle && STYLE_NAMES[requestedStyle] ? { style: requestedStyle } : {}),
+      ...(sqftFromParam ? { sqft: sqftFromParam } : {}),
     }))
   }, [hydrated, profile])
 

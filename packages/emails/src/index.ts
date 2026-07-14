@@ -101,6 +101,61 @@ export function estimateResultEmail(input: {
   return { subject, html, text }
 }
 
+export function moduleResultEmail(input: {
+  toolLabel: string // e.g. "AFFORDABILITY REPORT"
+  firstName: string
+  headline: string
+  subline: string
+  rows: [string, string][]
+  note: string
+  pdfUrl?: string | null
+  bookingUrl: string
+  briefUrl: string
+}): EmailContent {
+  const { toolLabel, firstName, headline, subline, rows, note, pdfUrl, bookingUrl, briefUrl } = input
+  const subject = `${firstName}, your ${toolLabel.toLowerCase()} is ready: ${headline}`
+  const rowsHtml = rows
+    .map(
+      ([label, value]) => `
+      <tr>
+        <td style="font-family:Inter,Arial,sans-serif;font-size:13px;color:#5E574F;padding:9px 0;border-bottom:1px dashed #D7D0C8;">${label}</td>
+        <td style="font-family:Oswald,Arial Narrow,sans-serif;font-weight:700;font-size:13px;color:${INK};padding:9px 0;border-bottom:1px dashed #D7D0C8;text-align:right;text-transform:uppercase;">${value}</td>
+      </tr>`,
+    )
+    .join("")
+  const html = layout(
+    `Your SEGC result: ${headline}`,
+    `
+    <div style="font-family:Oswald,Arial Narrow,sans-serif;font-weight:700;font-size:13px;color:${BROWN};text-transform:uppercase;">&#9632; ${toolLabel} &#9632;</div>
+    <h1 style="font-family:Oswald,Arial Narrow,sans-serif;font-weight:700;font-size:32px;line-height:1.05;color:${INK};text-transform:uppercase;margin:12px 0 6px;">${headline}</h1>
+    <p style="font-family:Inter,Arial,sans-serif;font-size:14px;color:#5E574F;margin:0 0 20px;">${subline}</p>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px;">${rowsHtml}</table>
+    <div style="border:1px dashed ${GOLD};background:rgba(244,178,20,.07);padding:14px 16px;font-family:Inter,Arial,sans-serif;font-size:13px;color:${INK};margin:0 0 24px;">${note}</div>
+    ${pdfUrl ? `<p style="font-family:Inter,Arial,sans-serif;font-size:13px;margin:0 0 20px;">Your full report is attached — or <a href="${pdfUrl}" style="color:${BROWN};font-weight:600;">download it here</a>.</p>` : `<p style="font-family:Inter,Arial,sans-serif;font-size:13px;margin:0 0 20px;">Your full report is attached as a PDF.</p>`}
+    <div style="margin:0 0 12px;">${goldButton(bookingUrl, "BOOK A FREE DESIGN CONSULTATION")}</div>
+    <div><a href="${briefUrl}" style="display:inline-block;border:1px solid ${INK};color:${INK};font-family:Oswald,Arial Narrow,sans-serif;font-weight:700;font-size:14px;text-transform:uppercase;text-decoration:none;padding:14px 22px;">START YOUR PROJECT BRIEF &rsaquo;</a></div>
+    `,
+  )
+  const text = [
+    `${firstName}, your ${toolLabel.toLowerCase()} is ready.`,
+    ``,
+    `RESULT: ${headline}`,
+    subline,
+    ``,
+    ...rows.map(([label, value]) => `${label}: ${value}`),
+    ``,
+    note,
+    ``,
+    pdfUrl ? `Download your PDF: ${pdfUrl}` : `Your full report is attached as a PDF.`,
+    ``,
+    `Book a free design consultation: ${bookingUrl}`,
+    `Start your project brief: ${briefUrl}`,
+    ``,
+    `— South Eastern General Contractors`,
+  ].join("\n")
+  return { subject, html, text }
+}
+
 export function magicLinkEmail(input: { resumeUrl: string }): EmailContent {
   const subject = "Resume your SEGC Build Plan"
   const html = layout(

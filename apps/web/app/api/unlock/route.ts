@@ -3,16 +3,16 @@
 // per module run via Inngest (durable) or inline (dev fallback).
 
 import { NextResponse, type NextRequest } from "next/server"
-import { computeHomeEstimate, fmt } from "@segc/engines"
 import { getJourneyId } from "@/lib/journey"
-import { unlockSchema } from "@/lib/schemas"
+import { INPUT_SCHEMAS, unlockSchema, type ToolId } from "@/lib/schemas"
+import { computeModule } from "@/lib/modules"
 import { verifyTurnstile } from "@/lib/integrations/turnstile"
 import { inngest, inngestConfigured } from "@/lib/inngest"
 import { runInlineFulfillment } from "@/lib/fulfill"
 import { createModuleRun, getLead, recordEvent, upsertLead, upsertProfile } from "@/lib/repo"
 
 // Server-side rule: every result screen recommends the next logical module.
-const NEXT_MODULE: Record<string, string> = {
+const NEXT_MODULE: Record<ToolId, string> = {
   estimator: "affordability",
   style: "estimator",
   affordability: "land",
@@ -30,7 +30,16 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid payload", details: parsed.error.flatten() }, { status: 422 })
   }
-  const { toolId, contact, inputs, turnstileToken } = parsed.data
+  const { toolId, contact, turnstileToken } = parsed.data
+
+  const inputsParsed = INPUT_SCHEMAS[toolId].safeParse(parsed.data.inputs)
+  if (!inputsParsed.success) {
+    return NextResponse.json(
+      { error: "Invalid inputs", details: inputsParsed.error.flatten() },
+      { status: 422 },
+    )
+  }
+  const inputs = inputsParsed.data
 
   const existingLead = await getLead(journeyId)
   const returning = Boolean(existingLead)
@@ -47,11 +56,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Compute the result server-side — the client never dictates numbers.
-  if (toolId !== "estimator") {
-    return NextResponse.json({ error: `Module ${toolId} not yet available.` }, { status: 400 })
-  }
-  const estimate = computeHomeEstimate(inputs)
-  const headline = `${fmt(estimate.low)}–${fmt(estimate.high)}`
+  const mod = computeModule(toolId, inputs)
 
   const lead = contact
     ? await upsertLead(journeyId, { name: contact.name, email: contact.email, phone: contact.phone })
@@ -61,21 +66,14 @@ export async function POST(request: NextRequest) {
     journeyId,
     toolId,
     inputs,
-    outputs: estimate,
-    headlineResult: headline,
+    outputs: mod.outputs,
+    headlineResult: mod.headline,
   })
 
   // Shared profile prefill: enter sqft once, it's everywhere.
-  await upsertProfile(journeyId, {
-    region: inputs.region,
-    sqft: inputs.sqft,
-    tier: inputs.tier,
-    style: inputs.style,
-    timeline: inputs.timeline,
-    landStatus: inputs.ownLand === "yes" ? "owned" : "shopping",
-  })
+  await upsertProfile(journeyId, mod.profilePatch)
 
-  await recordEvent(journeyId, "lead_unlocked", { toolId, headline, returning })
+  await recordEvent(journeyId, "lead_unlocked", { toolId, headline: mod.headline, returning })
 
   if (inngestConfigured()) {
     await inngest.send({
@@ -93,8 +91,10 @@ export async function POST(request: NextRequest) {
     ok: true,
     returning,
     lead: { name: lead.name, email: lead.email },
-    headline,
-    result: estimate,
-    nextModule: NEXT_MODULE[toolId] ?? "timeline",
+    headline: mod.headline,
+    subline: mod.subline,
+    note: mod.note,
+    result: mod.outputs,
+    nextModule: NEXT_MODULE[toolId],
   })
 }

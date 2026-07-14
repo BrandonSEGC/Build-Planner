@@ -29,28 +29,28 @@ const MODULES: {
     title: "AFFORDABILITY CALCULATOR",
     promise: "See what you can build before you talk to a lender. VA-loan aware.",
     href: "/plan/affordability",
-    live: false,
+    live: true,
   },
   {
     id: "land",
     title: "LAND + BUILD ESTIMATOR",
     promise: "Most builders quote the house. We quote the whole picture.",
     href: "/plan/land",
-    live: false,
+    live: true,
   },
   {
     id: "style",
     title: "HOME STYLE QUIZ",
     promise: "8 questions. Your architectural identity. Zero math.",
     href: "/plan/style",
-    live: false,
+    live: true,
   },
   {
     id: "timeline",
     title: "BUILD TIMELINE ESTIMATOR",
     promise: "When can you move in? On time isn’t a slogan — it’s a schedule.",
     href: "/plan/timeline",
-    live: false,
+    live: true,
   },
 ]
 

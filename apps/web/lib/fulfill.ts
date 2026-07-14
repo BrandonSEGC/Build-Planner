@@ -5,12 +5,14 @@
 // dev / no-Inngest environments. All steps are idempotent per module_run.
 
 import { computeHomeEstimate, fmt, HOME_CONFIG, STYLE_PROFILES, type HomeEstimateState } from "@segc/engines"
-import { estimateResultEmail } from "@segc/emails"
-import { renderEstimatePdf } from "@segc/pdf"
+import { estimateResultEmail, moduleResultEmail } from "@segc/emails"
+import { renderEstimatePdf, renderModulePdf } from "@segc/pdf"
 import { sendEmail } from "./integrations/email"
 import { sendSlackLeadAlert } from "./integrations/slack"
 import { upsertHubspotContact } from "./integrations/hubspot"
 import { uploadPdf } from "./integrations/r2"
+import { computeModule, TOOL_PDF_TYPES } from "./modules"
+import type { ToolId } from "./schemas"
 import {
   addDocument,
   getLead,
@@ -27,6 +29,14 @@ export const TOOL_LABELS: Record<string, string> = {
   land: "Land + Build Estimator",
   style: "Home Style Quiz",
   timeline: "Build Timeline Estimator",
+}
+
+export const TOOL_REPORT_LABELS: Record<string, string> = {
+  estimator: "CUSTOM HOME COST ESTIMATE",
+  affordability: "AFFORDABILITY REPORT",
+  land: "LAND + BUILD ALL-IN ESTIMATE",
+  style: "STYLE PROFILE",
+  timeline: "BUILD TIMELINE",
 }
 
 export function bookingUrl(): string {
@@ -53,39 +63,56 @@ export async function loadContext(moduleRunId: string): Promise<FulfillmentConte
 /** Step 1 — render the branded PDF for this run. */
 export async function stepRenderPdf(ctx: FulfillmentContext): Promise<Buffer> {
   const { run, lead } = ctx
-  if (run.toolId !== "estimator") throw new Error(`No PDF template yet for tool ${run.toolId}`)
-  const state = run.inputs as HomeEstimateState
-  const estimate = computeHomeEstimate(state)
-  const regionName = HOME_CONFIG.regions.find((r) => r.id === state.region)?.name ?? state.region
-  const styleName =
-    STYLE_PROFILES[state.style as keyof typeof STYLE_PROFILES]?.name ?? state.style
-  return renderEstimatePdf({
+  const toolId = run.toolId as ToolId
+  const generatedAt = new Date().toLocaleDateString("en-US", { dateStyle: "long" })
+
+  if (toolId === "estimator") {
+    const state = run.inputs as HomeEstimateState
+    const estimate = computeHomeEstimate(state)
+    const regionName = HOME_CONFIG.regions.find((r) => r.id === state.region)?.name ?? state.region
+    const styleName = STYLE_PROFILES[state.style as keyof typeof STYLE_PROFILES]?.name ?? state.style
+    return renderEstimatePdf({
+      name: lead.name,
+      headline: run.headlineResult,
+      psfEff: estimate.psfEff,
+      regionName,
+      styleName,
+      timeline: state.timeline,
+      sqft: state.sqft,
+      breakdown: [
+        ["Base construction", estimate.shell],
+        ["Garage + program", estimate.garage + estimate.bonus + estimate.porch],
+        ["Finishes + features", estimate.interiorAdds],
+        ["Site work", estimate.site],
+        ["Soft costs + contingency", estimate.soft + estimate.contingency],
+        ["Estimated midpoint", estimate.total],
+      ],
+      bookingUrl: bookingUrl(),
+      briefUrl: briefUrl(),
+      generatedAt,
+    })
+  }
+
+  const mod = computeModule(toolId, run.inputs)
+  return renderModulePdf({
+    toolLabel: TOOL_REPORT_LABELS[toolId] ?? toolId,
     name: lead.name,
-    headline: run.headlineResult,
-    psfEff: estimate.psfEff,
-    regionName,
-    styleName,
-    timeline: state.timeline,
-    sqft: state.sqft,
-    breakdown: [
-      ["Base construction", estimate.shell],
-      ["Garage + program", estimate.garage + estimate.bonus + estimate.porch],
-      ["Finishes + features", estimate.interiorAdds],
-      ["Site work", estimate.site],
-      ["Soft costs + contingency", estimate.soft + estimate.contingency],
-      ["Estimated midpoint", estimate.total],
-    ],
+    headline: mod.headline,
+    subline: mod.subline,
+    rows: mod.rows,
+    note: mod.note,
     bookingUrl: bookingUrl(),
     briefUrl: briefUrl(),
-    generatedAt: new Date().toLocaleDateString("en-US", { dateStyle: "long" }),
+    generatedAt,
   })
 }
 
 /** Step 2 — persist the PDF to R2 and record the document row. */
 export async function stepStorePdf(ctx: FulfillmentContext, pdf: Buffer): Promise<string | null> {
-  const key = `estimates/${ctx.run.id}.pdf`
+  const toolId = ctx.run.toolId as ToolId
+  const key = `${toolId}/${ctx.run.id}.pdf`
   const url = await uploadPdf(key, pdf)
-  if (url) await addDocument(ctx.run.id, url, "custom-home-estimate")
+  if (url) await addDocument(ctx.run.id, url, TOOL_PDF_TYPES[toolId] ?? toolId)
   return url
 }
 
@@ -96,53 +123,70 @@ export async function stepSendEmail(
   pdfUrl: string | null,
 ): Promise<void> {
   const { run, lead } = ctx
-  const state = run.inputs as HomeEstimateState
-  const estimate = computeHomeEstimate(state)
-  const regionName = HOME_CONFIG.regions.find((r) => r.id === state.region)?.name ?? state.region
-  const styleName =
-    STYLE_PROFILES[state.style as keyof typeof STYLE_PROFILES]?.name ?? state.style
+  const toolId = run.toolId as ToolId
   const firstName = lead.name.split(" ")[0] || lead.name
-  const content = estimateResultEmail({
+  const attachment = { filename: `SEGC-${TOOL_PDF_TYPES[toolId] ?? toolId}.pdf`, content: pdf }
+
+  if (toolId === "estimator") {
+    const state = run.inputs as HomeEstimateState
+    const estimate = computeHomeEstimate(state)
+    const regionName = HOME_CONFIG.regions.find((r) => r.id === state.region)?.name ?? state.region
+    const styleName = STYLE_PROFILES[state.style as keyof typeof STYLE_PROFILES]?.name ?? state.style
+    const content = estimateResultEmail({
+      firstName,
+      headline: run.headlineResult,
+      psf: fmt(estimate.psfEff),
+      regionName,
+      styleName,
+      pdfUrl,
+      bookingUrl: bookingUrl(),
+      briefUrl: briefUrl(),
+    })
+    await sendEmail({ to: lead.email, content, attachment })
+    return
+  }
+
+  const mod = computeModule(toolId, run.inputs)
+  const content = moduleResultEmail({
+    toolLabel: TOOL_REPORT_LABELS[toolId] ?? toolId,
     firstName,
-    headline: run.headlineResult,
-    psf: fmt(estimate.psfEff),
-    regionName,
-    styleName,
+    headline: mod.headline,
+    subline: mod.subline,
+    rows: mod.rows,
+    note: mod.note,
     pdfUrl,
     bookingUrl: bookingUrl(),
     briefUrl: briefUrl(),
   })
-  await sendEmail({
-    to: lead.email,
-    content,
-    attachment: { filename: "SEGC-Custom-Home-Estimate.pdf", content: pdf },
-  })
+  await sendEmail({ to: lead.email, content, attachment })
 }
 
 /** Step 4 — Slack sales alert. */
 export async function stepSlackAlert(ctx: FulfillmentContext, returning: boolean): Promise<void> {
-  const state = ctx.run.inputs as HomeEstimateState
+  const toolId = ctx.run.toolId as ToolId
+  const mod = computeModule(toolId, ctx.run.inputs)
   await sendSlackLeadAlert({
     name: ctx.lead.name,
     phone: ctx.lead.phone,
     email: ctx.lead.email,
-    toolLabel: TOOL_LABELS[ctx.run.toolId] ?? ctx.run.toolId,
+    toolLabel: TOOL_LABELS[toolId] ?? toolId,
     headline: ctx.run.headlineResult,
-    timeline: state.timeline ?? "unknown",
+    timeline: mod.timelineIntent || "unknown",
     returning,
   })
 }
 
 /** Step 5 — HubSpot contact upsert. */
 export async function stepHubspot(ctx: FulfillmentContext): Promise<void> {
-  const state = ctx.run.inputs as HomeEstimateState
+  const toolId = ctx.run.toolId as ToolId
+  const mod = computeModule(toolId, ctx.run.inputs)
   const result = await upsertHubspotContact({
     email: ctx.lead.email,
     name: ctx.lead.name,
     phone: ctx.lead.phone,
-    toolId: ctx.run.toolId,
+    toolId,
     headline: ctx.run.headlineResult,
-    timeline: state.timeline ?? "unknown",
+    timeline: mod.timelineIntent || "unknown",
   })
   if (result.hubspotId) await setLeadHubspotId(ctx.run.journeyId, result.hubspotId)
 }
