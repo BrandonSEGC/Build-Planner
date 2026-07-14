@@ -194,7 +194,16 @@ export function StyleQuizFlow() {
                           textAlign: "left",
                         }}
                       >
-                        <span className="segc-swatch-img" style={{ background: answer.art, display: "block", height: 130 }} />
+                        <span
+                          className="segc-swatch-img"
+                          style={{
+                            background: answer.image
+                              ? `url(${answer.image}) center / cover, ${answer.art}`
+                              : answer.art,
+                            display: "block",
+                            height: 130,
+                          }}
+                        />
                         <span style={{ display: "block", padding: "12px 14px 14px" }}>
                           <strong style={{ display: "block", fontFamily: tokens.display, fontSize: 15, textTransform: "uppercase" }}>
                             {answer.label}

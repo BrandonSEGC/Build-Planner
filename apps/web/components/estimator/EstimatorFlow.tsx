@@ -38,13 +38,15 @@ import {
 import { useBuildProfile } from "@/lib/store"
 import { FloorPlan } from "./FloorPlan"
 
+// Generated brand imagery (Higgsfield) served from /public/images.
+// Swap for real SEGC project photography when available — filenames stay stable.
 const STYLE_IMAGES: Record<string, string> = {
-  farmhouse: "https://webimages.southeasterngc.com/custom-home-estimator/style-modern-farmhouse.png",
-  lowcountry: "https://webimages.southeasterngc.com/custom-home-estimator/style-lowcountry.png",
-  craftsman: "https://webimages.southeasterngc.com/custom-home-estimator/style-craftsman.png",
-  modern: "https://webimages.southeasterngc.com/custom-home-estimator/style-modern.png",
-  traditional: "https://webimages.southeasterngc.com/custom-home-estimator/style-traditional-brick.png",
-  transitional: "https://webimages.southeasterngc.com/custom-home-estimator/style-transitional.png",
+  farmhouse: "/images/style-modern-farmhouse.webp",
+  lowcountry: "/images/style-lowcountry.webp",
+  craftsman: "/images/style-craftsman.webp",
+  modern: "/images/style-modern.webp",
+  traditional: "/images/style-traditional-brick.webp",
+  transitional: "/images/style-transitional.webp",
 }
 
 const STYLE_NAMES: Record<string, string> = Object.fromEntries(

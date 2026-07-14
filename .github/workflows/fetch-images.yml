@@ -1,0 +1,53 @@
+# One-shot asset fetcher: downloads the Higgsfield-generated brand images
+# (URLs in scripts/image-list.txt), optimizes them to 800px WebP, and commits
+# them to apps/web/public/images/. Runs when this workflow or the list changes,
+# or manually via workflow_dispatch. Safe to delete after images are committed.
+
+name: fetch-images
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/fetch-images.yml"
+      - "scripts/image-list.txt"
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install webp tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq webp imagemagick
+
+      - name: Download and optimize
+        run: |
+          mkdir -p apps/web/public/images
+          failed=0
+          while read -r name url; do
+            [ -z "$name" ] && continue
+            echo "fetching $name"
+            if curl -sfL --retry 3 -o "/tmp/$name.png" "$url"; then
+              convert "/tmp/$name.png" -resize 800x -strip -quality 82 "apps/web/public/images/$name.webp"
+            else
+              echo "::warning::failed to fetch $name"
+              failed=$((failed+1))
+            fi
+          done < scripts/image-list.txt
+          echo "failed=$failed"
+          ls -la apps/web/public/images | head -50
+          [ "$failed" -eq 0 ] || exit 1
+
+      - name: Commit images
+        run: |
+          git config user.name "segc-image-bot"
+          git config user.email "actions@github.com"
+          git add apps/web/public/images
+          git diff --cached --quiet && echo "nothing to commit" && exit 0
+          git commit -m "Add Higgsfield-generated brand images (38 optimized WebP assets)"
+          git push
