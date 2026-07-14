@@ -1,0 +1,16 @@
+{
+  "name": "segc-build-planner",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.28.0",
+  "scripts": {
+    "dev": "pnpm --filter @segc/web dev",
+    "build": "pnpm --filter @segc/web build",
+    "start": "pnpm --filter @segc/web start",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "db:generate": "pnpm --filter @segc/db generate",
+    "db:push": "pnpm --filter @segc/db push"
+  }
+}

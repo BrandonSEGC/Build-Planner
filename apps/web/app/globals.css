@@ -1,0 +1,10 @@
+@import "@segc/ui/styles.css";
+
+:root {
+  --font-oswald: "Oswald Variable", "Oswald", "Arial Narrow", sans-serif;
+  --font-inter: "Inter Variable", "Inter", Arial, sans-serif;
+}
+
+body {
+  font-family: var(--font-inter);
+}

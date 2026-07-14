@@ -1,0 +1,11 @@
+node_modules
+.next
+.env
+.env.local
+.env*.local
+dist
+*.tsbuildinfo
+.DS_Store
+.vercel
+drizzle/meta
+coverage

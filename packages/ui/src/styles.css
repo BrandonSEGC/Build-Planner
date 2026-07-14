@@ -1,0 +1,163 @@
+/* SEGC Build Planner — global design-system styles.
+   Tokens mirror packages/ui/src/tokens.ts. */
+
+:root {
+  --segc-brown: #451e00;
+  --segc-brown-mid: #693709;
+  --segc-gold: #f4b214;
+  --segc-ink: #141414;
+  --segc-cream: #fffcfc;
+  --segc-warm: #fffbf5;
+  --segc-gray: #f5f5f5;
+  --segc-white: #ffffff;
+  --segc-muted: #857d72;
+  --segc-error: #b42318;
+  --segc-rad-card: 20px;
+  --segc-rad-tag: 8px;
+  --segc-rad-pill: 54px;
+  --segc-shadow: 0 18px 55px rgba(69, 30, 0, 0.09);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--segc-cream);
+  color: var(--segc-ink);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:hover:not(:disabled) {
+  filter: brightness(0.96);
+  transform: translateY(-1px);
+}
+
+button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--segc-gold);
+  outline-offset: 3px;
+}
+
+input[type="range"] {
+  accent-color: var(--segc-brown);
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--segc-brown);
+  border-radius: 0;
+  background: var(--segc-gold);
+  box-shadow: 0 0 0 4px #fff;
+}
+
+.segc-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 350px;
+  gap: 24px;
+  align-items: start;
+}
+
+.segc-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.segc-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.segc-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.segc-spec {
+  position: sticky;
+  top: 24px;
+}
+
+.segc-swatch-img {
+  transition: transform 0.2s ease;
+}
+
+button:hover .segc-swatch-img {
+  transform: scale(1.025);
+}
+
+.segc-step-enter {
+  animation: segc-rise 0.3s ease both;
+}
+
+@keyframes segc-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 899px) {
+  .segc-stage {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .segc-spec {
+    position: relative;
+    top: auto;
+  }
+  .segc-grid-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .segc-grid-2,
+  .segc-grid-3,
+  .segc-grid-4 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .segc-card {
+    padding: 20px !important;
+  }
+  .segc-hero {
+    padding: 42px 20px 26px !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition: none !important;
+    animation: none !important;
+  }
+}
