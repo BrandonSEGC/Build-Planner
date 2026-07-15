@@ -109,6 +109,21 @@ export const unlockSchema = z.object({
 
 export type UnlockPayload = z.infer<typeof unlockSchema>
 
+export const briefSchema = z.object({
+  contact: contactSchema.nullable(), // null = recognized lead
+  projectType: z.enum(["custom-home", "land-build", "renovation", "commercial"]),
+  region: z.string(),
+  sqft: z.number().int().min(0).max(30000),
+  beds: z.number().int().min(0).max(12),
+  baths: z.number().int().min(0).max(12),
+  landStatus: z.enum(["owned", "contract", "shopping"]),
+  budgetRange: z.enum(["under-500k", "500-750k", "750k-1m", "over-1m", "unsure"]),
+  timeline: z.string(),
+  notes: z.string().max(2000),
+})
+
+export type BriefPayload = z.infer<typeof briefSchema>
+
 export const profileSchema = z.object({
   region: z.string().optional(),
   sqft: z.number().int().min(0).max(30000).optional(),

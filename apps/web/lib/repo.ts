@@ -3,8 +3,8 @@
 // The in-memory store survives hot reloads via globalThis but NOT server restarts —
 // it is a dev convenience, never a production mode.
 
-import { eq } from "drizzle-orm"
-import { getDb, documents, events, leads, moduleRuns, profiles, visitors } from "@segc/db"
+import { and, eq, gt, isNull } from "drizzle-orm"
+import { getDb, documents, events, leads, magicTokens, moduleRuns, profiles, visitors } from "@segc/db"
 
 export interface LeadRecord {
   id: string
@@ -45,6 +45,7 @@ interface MemoryStore {
   runs: Map<string, ModuleRunRecord>
   documents: { moduleRunId: string; url: string; type: string }[]
   events: { visitorId: string | null; name: string; props: unknown; ts: string }[]
+  magicTokens: Map<string, { journeyId: string; expiresAt: number; usedAt: number | null }>
 }
 
 function memory(): MemoryStore {
@@ -57,6 +58,7 @@ function memory(): MemoryStore {
       runs: new Map(),
       documents: [],
       events: [],
+      magicTokens: new Map(),
     }
   }
   return g.__segcMemory
@@ -133,8 +135,10 @@ export async function getLead(journeyId: string): Promise<LeadRecord | null> {
 
 export async function upsertLead(
   journeyId: string,
-  contact: { name: string; email: string; phone: string },
+  rawContact: { name: string; email: string; phone: string },
 ): Promise<LeadRecord> {
+  // Normalize email on write so magic-link lookups by email always match.
+  const contact = { ...rawContact, email: rawContact.email.trim().toLowerCase() }
   const db = getDb()
   if (!db) {
     const store = memory()
@@ -291,6 +295,81 @@ export async function addDocument(moduleRunId: string, url: string, type: string
     return
   }
   await db.insert(documents).values({ moduleRunId, url, type })
+}
+
+/* ---------------- magic links ---------------- */
+
+/** Finds the journey ID for a lead by email (most recent wins). Null-safe: no user enumeration. */
+export async function findJourneyByEmail(email: string): Promise<string | null> {
+  const normalized = email.trim().toLowerCase()
+  const db = getDb()
+  if (!db) {
+    for (const [journeyId, lead] of memory().leads) {
+      if (lead.email.toLowerCase() === normalized) return journeyId
+    }
+    return null
+  }
+  const rows = await db
+    .select({ visitorId: leads.visitorId })
+    .from(leads)
+    .where(eq(leads.email, normalized))
+    .limit(1)
+  if (!rows[0]) return null
+  const visitorRows = await db
+    .select({ journeyId: visitors.journeyId })
+    .from(visitors)
+    .where(eq(visitors.id, rows[0].visitorId))
+    .limit(1)
+  return visitorRows[0]?.journeyId ?? null
+}
+
+const MAGIC_TOKEN_TTL_MS = 24 * 60 * 60 * 1000 // 24 hours
+
+export async function createMagicToken(journeyId: string): Promise<string> {
+  const token = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "")
+  const db = getDb()
+  if (!db) {
+    memory().magicTokens.set(token, {
+      journeyId,
+      expiresAt: Date.now() + MAGIC_TOKEN_TTL_MS,
+      usedAt: null,
+    })
+    return token
+  }
+  const visitor = await ensureVisitor(journeyId)
+  await db.insert(magicTokens).values({
+    visitorId: visitor.id,
+    token,
+    expiresAt: new Date(Date.now() + MAGIC_TOKEN_TTL_MS),
+  })
+  return token
+}
+
+/** Single-use, expiring. Returns the journeyId to re-attach, or null. */
+export async function consumeMagicToken(token: string): Promise<string | null> {
+  const db = getDb()
+  if (!db) {
+    const entry = memory().magicTokens.get(token)
+    if (!entry || entry.usedAt || entry.expiresAt < Date.now()) return null
+    entry.usedAt = Date.now()
+    return entry.journeyId
+  }
+  const rows = await db
+    .select()
+    .from(magicTokens)
+    .where(
+      and(eq(magicTokens.token, token), isNull(magicTokens.usedAt), gt(magicTokens.expiresAt, new Date())),
+    )
+    .limit(1)
+  const row = rows[0]
+  if (!row) return null
+  await db.update(magicTokens).set({ usedAt: new Date() }).where(eq(magicTokens.id, row.id))
+  const visitorRows = await db
+    .select({ journeyId: visitors.journeyId })
+    .from(visitors)
+    .where(eq(visitors.id, row.visitorId))
+    .limit(1)
+  return visitorRows[0]?.journeyId ?? null
 }
 
 export async function recordEvent(

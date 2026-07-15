@@ -156,6 +156,24 @@ export function moduleResultEmail(input: {
   return { subject, html, text }
 }
 
+export function briefReceivedEmail(input: { firstName: string; bookingUrl: string }): EmailContent {
+  const subject = `${input.firstName}, your project brief is in — here's what happens next`
+  const html = layout(
+    "We received your project brief.",
+    `
+    <div style="font-family:Oswald,Arial Narrow,sans-serif;font-weight:700;font-size:13px;color:${BROWN};text-transform:uppercase;">&#9632; PROJECT BRIEF RECEIVED &#9632;</div>
+    <h1 style="font-family:Oswald,Arial Narrow,sans-serif;font-weight:700;font-size:30px;line-height:1.05;color:${INK};text-transform:uppercase;margin:12px 0 14px;">WE'RE ALREADY READING IT.</h1>
+    <p style="font-family:Inter,Arial,sans-serif;font-size:14px;line-height:1.6;color:${INK};margin:0 0 18px;">
+      ${input.firstName}, your brief is with our team. Someone who has actually built what you're describing
+      will review it and reach out within one business day. Want to skip the wait?
+    </p>
+    ${goldButton(input.bookingUrl, "BOOK A FREE DESIGN CONSULTATION")}
+    `,
+  )
+  const text = `${input.firstName}, we received your project brief. Our team will reach out within one business day. Skip the wait: ${input.bookingUrl}`
+  return { subject, html, text }
+}
+
 export function magicLinkEmail(input: { resumeUrl: string }): EmailContent {
   const subject = "Resume your SEGC Build Plan"
   const html = layout(
