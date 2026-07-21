@@ -3,7 +3,7 @@
 // Land + Build All-In Estimator — 4 steps + stacked LAND/SITE/BUILD/SOFT preview.
 // "Most builders quote the house. We quote the whole picture."
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { computeLandBuild, fmt, LAND_BUILD_CONFIG, type LandBuildState } from "@segc/engines"
 import {
   BreakdownCard,
@@ -27,6 +27,7 @@ import {
 } from "@segc/ui"
 import { useUnlock } from "@/components/shared/useUnlock"
 import { GateStep } from "@/components/shared/GateStep"
+import { usePlanDraft } from "@/components/shared/usePlanDraft"
 
 const TOTAL_STEPS = 4
 
@@ -71,7 +72,34 @@ function segmentsFrom(result: ReturnType<typeof computeLandBuild>): CostSegment[
 export function LandBuildFlow() {
   const [step, setStep] = useState(0)
   const [state, setState] = useState<LandBuildInputs>(INITIAL)
-  const { unlocked, pending, gateError, unlock, lead } = useUnlock("land")
+  const prefilled = useRef(false)
+  const { unlocked, pending, gateError, unlock, lead, hydrated, profile } = useUnlock("land")
+  const { draftReady, draftRestored } = usePlanDraft({
+    toolId: "land",
+    step,
+    inputs: state,
+    maxStep: TOTAL_STEPS - 1,
+    onRestore: (draft) => {
+      setState(draft.inputs)
+      setStep(draft.step)
+    },
+  })
+
+  useEffect(() => {
+    if (!hydrated || !draftReady || prefilled.current) return
+    prefilled.current = true
+    if (draftRestored) return
+    setState((current) => ({
+      ...current,
+      ...(profile.region ? { region: profile.region } : {}),
+      ...(profile.sqft ? { sqft: profile.sqft } : {}),
+      ...(profile.tier ? { tier: profile.tier as LandBuildInputs["tier"] } : {}),
+      ...(profile.landStatus
+        ? { landStatus: profile.landStatus as LandBuildInputs["landStatus"] }
+        : {}),
+      ...(profile.timeline ? { timeline: profile.timeline } : {}),
+    }))
+  }, [draftReady, draftRestored, hydrated, profile])
 
   const result = useMemo(() => computeLandBuild(state), [state])
   const range = `${fmt(result.low)}–${fmt(result.high)}`
@@ -109,7 +137,11 @@ export function LandBuildFlow() {
             </h2>
             <StackedCostBar dark segments={segmentsFrom(result)} />
           </div>
-          <PdfConfirmStrip email={unlocked.lead.email} name="land + build estimate" />
+          <PdfConfirmStrip
+            email={unlocked.lead.email}
+            name="land + build estimate"
+            downloadHref="/api/plan/pdf"
+          />
           <div
             style={{
               background: "rgba(244,178,20,.08)",
@@ -140,8 +172,8 @@ export function LandBuildFlow() {
           <NextModuleCard
             title="WHEN COULD YOU MOVE IN?"
             carried={`We kept your ${state.sqft.toLocaleString()} sq ft ${state.tier} build — see the schedule next.`}
-            href="/plan/timeline"
-            cta="BUILD MY TIMELINE ›"
+            href="/plan/continue"
+            cta="CONTINUE MY PLAN ›"
           />
           <FunnelBlock
             bookingUrl={process.env.NEXT_PUBLIC_CAL_LINK ?? "https://southeasterngc.com/contact"}

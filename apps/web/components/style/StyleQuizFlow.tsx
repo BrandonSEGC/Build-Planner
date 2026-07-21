@@ -3,7 +3,7 @@
 // Home Style Quiz — 8 image questions, auto-advancing, zero math.
 // Lowest-friction module; ends at the same gate + funnel as everything else.
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { scoreStyleQuiz, STYLE_PROFILES, type StyleId } from "@segc/engines"
 import {
   BreakdownCard,
@@ -21,6 +21,7 @@ import {
 } from "@segc/ui"
 import { useUnlock } from "@/components/shared/useUnlock"
 import { GateStep } from "@/components/shared/GateStep"
+import { usePlanDraft } from "@/components/shared/usePlanDraft"
 import { QUIZ } from "./quizData"
 
 // 8 questions + timeline/gate screen
@@ -30,7 +31,27 @@ export function StyleQuizFlow() {
   const [step, setStep] = useState(0)
   const [picks, setPicks] = useState<(string | null)[]>(Array(QUIZ.length).fill(null))
   const [timeline, setTimeline] = useState("explore")
-  const { unlocked, pending, gateError, unlock, lead } = useUnlock("style")
+  const prefilled = useRef(false)
+  const { unlocked, pending, gateError, unlock, lead, hydrated, profile } = useUnlock("style")
+  const draftInputs = useMemo(() => ({ picks, timeline }), [picks, timeline])
+  const { draftReady, draftRestored } = usePlanDraft({
+    toolId: "style",
+    step,
+    inputs: draftInputs,
+    maxStep: TOTAL_STEPS - 1,
+    onRestore: (draft) => {
+      setPicks(draft.inputs.picks)
+      setTimeline(draft.inputs.timeline)
+      setStep(draft.step)
+    },
+  })
+
+  useEffect(() => {
+    if (!hydrated || !draftReady || prefilled.current) return
+    prefilled.current = true
+    if (draftRestored || !profile.timeline) return
+    setTimeline(profile.timeline)
+  }, [draftReady, draftRestored, hydrated, profile.timeline])
 
   const answers = useMemo(
     () =>
@@ -84,7 +105,11 @@ export function StyleQuizFlow() {
               …with a {secondary.name} streak.
             </p>
           </div>
-          <PdfConfirmStrip email={unlocked.lead.email} name="style profile" />
+          <PdfConfirmStrip
+            email={unlocked.lead.email}
+            name="style profile"
+            downloadHref="/api/plan/pdf"
+          />
           <div className="segc-grid-2">
             <BreakdownCard title="Your Style DNA" rows={primary.dna.map((line, i) => [`0${i + 1}`, line] as [string, string])} />
             <BreakdownCard
@@ -94,9 +119,9 @@ export function StyleQuizFlow() {
           </div>
           <NextModuleCard
             title={`SEE WHAT A ${primary.name.toUpperCase()} COSTS`}
-            carried="One tap — the estimator opens with your style preselected."
-            href={`/plan/estimator?style=${final.primary}`}
-            cta="PRICE MY STYLE ›"
+            carried="Your style is saved and will carry into the home design and cost chapter."
+            href="/plan/continue"
+            cta="CONTINUE MY PLAN ›"
           />
           <FunnelBlock
             bookingUrl={process.env.NEXT_PUBLIC_CAL_LINK ?? "https://southeasterngc.com/contact"}

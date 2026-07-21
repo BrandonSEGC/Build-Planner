@@ -3,57 +3,16 @@
 
 import Link from "next/link"
 import { getJourneyId } from "@/lib/journey"
-import { getLead, listModuleRuns } from "@/lib/repo"
-import { TOOL_LABELS } from "@/lib/fulfill"
+import { getLead, getLatestPlanDraft, listModuleRuns } from "@/lib/repo"
+import {
+  getPlanChapter,
+  latestRunsByTool,
+  nextIncompleteChapter,
+  PLAN_CHAPTERS,
+} from "@/lib/planner"
 import { ResumeCard } from "@/components/hub/ResumeCard"
 
 export const dynamic = "force-dynamic"
-
-const MODULES: {
-  id: string
-  title: string
-  promise: string
-  href: string
-  live: boolean
-  featured?: boolean
-}[] = [
-  {
-    id: "estimator",
-    title: "CUSTOM HOME COST ESTIMATOR",
-    promise: "Design the footprint, finishes, and features — get a real planning range.",
-    href: "/plan/estimator",
-    live: true,
-    featured: true,
-  },
-  {
-    id: "affordability",
-    title: "AFFORDABILITY CALCULATOR",
-    promise: "See what you can build before you talk to a lender. VA-loan aware.",
-    href: "/plan/affordability",
-    live: true,
-  },
-  {
-    id: "land",
-    title: "LAND + BUILD ESTIMATOR",
-    promise: "Most builders quote the house. We quote the whole picture.",
-    href: "/plan/land",
-    live: true,
-  },
-  {
-    id: "style",
-    title: "HOME STYLE QUIZ",
-    promise: "8 questions. Your architectural identity. Zero math.",
-    href: "/plan/style",
-    live: true,
-  },
-  {
-    id: "timeline",
-    title: "BUILD TIMELINE ESTIMATOR",
-    promise: "When can you move in? On time isn’t a slogan — it’s a schedule.",
-    href: "/plan/timeline",
-    live: true,
-  },
-]
 
 const oswald = "var(--font-oswald), 'Oswald', 'Arial Narrow', sans-serif"
 const inter = "var(--font-inter), 'Inter', Arial, sans-serif"
@@ -78,16 +37,22 @@ function PreHeader({ children, color = "#F4B214" }: { children: React.ReactNode;
 export default async function PlanHub({
   searchParams,
 }: {
-  searchParams: Promise<{ resumed?: string; resume?: string }>
+  searchParams: Promise<{ complete?: string; resumed?: string; resume?: string }>
 }) {
   const params = await searchParams
   const journeyId = await getJourneyId()
-  const lead = journeyId ? await getLead(journeyId) : null
-  const runs = journeyId ? await listModuleRuns(journeyId) : []
-  const completedByTool = new Map(runs.map((run) => [run.toolId, run]))
+  const [lead, runs, draft] = journeyId
+    ? await Promise.all([
+        getLead(journeyId),
+        listModuleRuns(journeyId),
+        getLatestPlanDraft(journeyId),
+      ])
+    : [null, [], null]
+  const completedByTool = latestRunsByTool(runs)
   const recognized = Boolean(lead)
   const firstName = lead?.name.split(" ")[0]
-  const completedCount = MODULES.filter((m) => completedByTool.has(m.id)).length
+  const completedCount = PLAN_CHAPTERS.filter((chapter) => completedByTool.has(chapter.id)).length
+  const activeChapter = (draft ? getPlanChapter(draft.toolId) : null) ?? nextIncompleteChapter(runs)
 
   return (
     <div style={{ background: "#FFFCFC", minHeight: "100vh" }}>
@@ -95,6 +60,11 @@ export default async function PlanHub({
       {params.resumed === "1" && recognized && (
         <div style={{ background: "#F4B214", color: "#000", fontFamily: oswald, fontSize: 14, fontWeight: 700, padding: "12px 28px", textTransform: "uppercase" }}>
           ⚑ WELCOME BACK{firstName ? `, ${firstName}` : ""} — YOUR BUILD PLAN IS RESTORED.
+        </div>
+      )}
+      {params.complete === "1" && completedCount === PLAN_CHAPTERS.length && (
+        <div style={{ background: "#F4B214", color: "#000", fontFamily: oswald, fontSize: 14, fontWeight: 700, padding: "12px 28px", textTransform: "uppercase" }}>
+          ⚑ ALL FIVE CHAPTERS ARE COMPLETE — YOUR UNIFIED BUILD PLAN IS READY TO EXPORT.
         </div>
       )}
       {params.resume === "expired" && (
@@ -134,29 +104,48 @@ export default async function PlanHub({
                   ■ PLAN PROGRESS ■
                 </span>
                 <strong style={{ fontFamily: oswald, fontSize: 14, textTransform: "uppercase" }}>
-                  {completedCount} OF {MODULES.length} COMPLETE
+                  {completedCount} OF {PLAN_CHAPTERS.length} COMPLETE
                 </strong>
               </div>
               <div style={{ background: "rgba(255,251,245,.15)", display: "flex", height: 6 }}>
-                <span style={{ background: "#F4B214", width: `${(completedCount / MODULES.length) * 100}%` }} />
+                <span style={{ background: "#F4B214", width: `${(completedCount / PLAN_CHAPTERS.length) * 100}%` }} />
               </div>
-              <a
-                href={process.env.NEXT_PUBLIC_CAL_LINK ?? "https://southeasterngc.com/contact"}
-                style={{
-                  background: "#F4B214",
-                  color: "#000",
-                  display: "inline-block",
-                  fontFamily: oswald,
-                  fontSize: 15,
-                  fontWeight: 700,
-                  marginTop: 18,
-                  padding: "15px 22px",
-                  textDecoration: "none",
-                  textTransform: "uppercase",
-                }}
-              >
-                BOOK A FREE DESIGN CONSULTATION ›
-              </a>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 18 }}>
+                <Link
+                  href="/plan/continue"
+                  style={{
+                    background: "#F4B214",
+                    color: "#000",
+                    display: "inline-block",
+                    fontFamily: oswald,
+                    fontSize: 15,
+                    fontWeight: 700,
+                    padding: "15px 22px",
+                    textDecoration: "none",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  {activeChapter ? "CONTINUE MY BUILD PLAN ›" : "REVIEW MY BUILD PLAN ›"}
+                </Link>
+                {completedCount > 0 && (
+                  <a
+                    href="/api/plan/pdf"
+                    style={{
+                      border: "1px solid rgba(255,251,245,.7)",
+                      color: "#FFFBF5",
+                      display: "inline-block",
+                      fontFamily: oswald,
+                      fontSize: 15,
+                      fontWeight: 700,
+                      padding: "14px 22px",
+                      textDecoration: "none",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    EXPORT RESULTS PDF ↓
+                  </a>
+                )}
+              </div>
             </div>
           )}
           <div style={{ display: "flex", flexWrap: "wrap", gap: 9 }}>
@@ -192,9 +181,9 @@ export default async function PlanHub({
         </section>
       )}
 
-      {/* MODULE GRID */}
+      {/* UNIFIED PLAN ROADMAP */}
       <section style={{ margin: "0 auto", maxWidth: 1140, padding: "56px 28px 24px" }}>
-        <PreHeader color="#693709">FIVE TOOLS. ONE PLAN.</PreHeader>
+        <PreHeader color="#693709">ONE TOOL. FIVE CONNECTED CHAPTERS.</PreHeader>
         <h2
           style={{
             color: "#141414",
@@ -206,29 +195,52 @@ export default async function PlanHub({
             textTransform: "uppercase",
           }}
         >
-          START WHERE IT HURTS MOST.
+          FOLLOW ONE PATH FROM IDEA TO BUILD-READY.
         </h2>
+        <p style={{ color: "#5E574F", fontFamily: inter, fontSize: 15, lineHeight: 1.55, margin: "-16px 0 26px", maxWidth: "62ch" }}>
+          No tool picker and no repeated setup. Your answers carry forward, each step saves
+          automatically, and your results come together in one build plan.
+        </p>
+        <Link
+          href="/plan/continue"
+          style={{
+            background: "#F4B214",
+            color: "#000",
+            display: "inline-block",
+            fontFamily: oswald,
+            fontSize: 16,
+            fontWeight: 700,
+            marginBottom: 28,
+            padding: "17px 24px",
+            textDecoration: "none",
+            textTransform: "uppercase",
+          }}
+        >
+          {activeChapter
+            ? `${completedCount ? "CONTINUE" : "START"} MY BUILD PLAN ›`
+            : "REVIEW MY COMPLETED PLAN ›"}
+        </Link>
         <div style={{ display: "grid", gap: 18, gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))" }}>
-          {MODULES.map((module) => {
+          {PLAN_CHAPTERS.map((module, index) => {
             const done = completedByTool.get(module.id)
+            const active = activeChapter?.id === module.id
             const card = (
               <div
                 key={module.id}
                 style={{
-                  background: module.featured ? "#451E00" : "#FFFFFF",
+                  background: active ? "#451E00" : "#FFFFFF",
                   border: "1px solid rgba(69,30,0,0.09)",
                   borderRadius: 20,
                   boxShadow: "0 18px 55px rgba(69,30,0,0.07)",
-                  color: module.featured ? "#FFFBF5" : "#141414",
+                  color: active ? "#FFFBF5" : "#141414",
                   display: "flex",
                   flexDirection: "column",
                   gap: 12,
-                  gridColumn: module.featured ? "1 / -1" : undefined,
                   padding: 28,
                   position: "relative",
                 }}
               >
-                {module.featured && (
+                {active && (
                   <span
                     style={{
                       background: "#F4B214",
@@ -243,24 +255,24 @@ export default async function PlanHub({
                       textTransform: "uppercase",
                     }}
                   >
-                    MOST POPULAR
+                    {draft?.toolId === module.id ? "SAVED HERE" : "UP NEXT"}
                   </span>
                 )}
                 <span
                   style={{
-                    color: module.featured ? "#F4B214" : "#693709",
+                    color: active ? "#F4B214" : "#693709",
                     fontFamily: oswald,
                     fontSize: 13,
                     fontWeight: 700,
                     textTransform: "uppercase",
                   }}
                 >
-                  ■ {TOOL_LABELS[module.id] ?? module.id} ■
+                  ■ CHAPTER {index + 1} OF {PLAN_CHAPTERS.length} ■
                 </span>
                 <h3
                   style={{
                     fontFamily: oswald,
-                    fontSize: module.featured ? "clamp(26px, 4vw, 40px)" : 24,
+                    fontSize: active ? "clamp(26px, 4vw, 36px)" : 24,
                     fontWeight: 700,
                     letterSpacing: "-0.64px",
                     lineHeight: 1.05,
@@ -277,7 +289,7 @@ export default async function PlanHub({
                     lineHeight: 1.5,
                     margin: 0,
                     maxWidth: "52ch",
-                    opacity: module.featured ? 0.78 : 0.72,
+                    opacity: active ? 0.78 : 0.72,
                   }}
                 >
                   {module.promise}
@@ -293,51 +305,21 @@ export default async function PlanHub({
                   </div>
                 ) : null}
                 <div style={{ marginTop: "auto", paddingTop: 10 }}>
-                  {module.live ? (
-                    <span
-                      style={{
-                        background: "#F4B214",
-                        color: "#000",
-                        display: "inline-block",
-                        fontFamily: oswald,
-                        fontSize: 15,
-                        fontWeight: 700,
-                        padding: "15px 22px",
-                        textTransform: "uppercase",
-                      }}
-                    >
-                      {done ? "RUN IT AGAIN ›" : module.featured ? "GET YOUR ESTIMATE ›" : "START ›"}
-                    </span>
-                  ) : (
-                    <span
-                      style={{
-                        border: `1px solid ${module.featured ? "#FFFBF5" : "#141414"}`,
-                        display: "inline-block",
-                        fontFamily: oswald,
-                        fontSize: 13,
-                        fontWeight: 700,
-                        opacity: 0.5,
-                        padding: "13px 20px",
-                        textTransform: "uppercase",
-                      }}
-                    >
-                      COMING SOON
-                    </span>
-                  )}
+                  <span
+                    style={{
+                      color: active ? "#F4B214" : done ? "#2E7D32" : "#857D72",
+                      fontFamily: oswald,
+                      fontSize: 13,
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    {done ? "✓ COMPLETE" : active ? "→ CONTINUES HERE" : "○ AHEAD"}
+                  </span>
                 </div>
               </div>
             )
-            return module.live ? (
-              <Link
-                href={module.href}
-                key={module.id}
-                style={{ display: "contents", textDecoration: "none", color: "inherit" }}
-              >
-                {card}
-              </Link>
-            ) : (
-              card
-            )
+            return card
           })}
         </div>
       </section>

@@ -3,8 +3,18 @@
 // The in-memory store survives hot reloads via globalThis but NOT server restarts —
 // it is a dev convenience, never a production mode.
 
-import { and, eq, gt, isNull } from "drizzle-orm"
-import { getDb, documents, events, leads, magicTokens, moduleRuns, profiles, visitors } from "@segc/db"
+import { and, desc, eq, gt, isNull } from "drizzle-orm"
+import {
+  getDb,
+  documents,
+  events,
+  leads,
+  magicTokens,
+  moduleRuns,
+  planDrafts,
+  profiles,
+  visitors,
+} from "@segc/db"
 
 export interface LeadRecord {
   id: string
@@ -36,6 +46,13 @@ export interface ProfileRecord {
   landStatus?: string | null
 }
 
+export interface PlanDraftRecord {
+  toolId: string
+  step: number
+  inputs: unknown
+  updatedAt: string
+}
+
 /* ---------------- in-memory fallback ---------------- */
 
 interface MemoryStore {
@@ -43,6 +60,7 @@ interface MemoryStore {
   profiles: Map<string, ProfileRecord>
   leads: Map<string, LeadRecord>
   runs: Map<string, ModuleRunRecord>
+  drafts: Map<string, PlanDraftRecord>
   documents: { moduleRunId: string; url: string; type: string }[]
   events: { visitorId: string | null; name: string; props: unknown; ts: string }[]
   magicTokens: Map<string, { journeyId: string; expiresAt: number; usedAt: number | null }>
@@ -56,6 +74,7 @@ function memory(): MemoryStore {
       profiles: new Map(),
       leads: new Map(),
       runs: new Map(),
+      drafts: new Map(),
       documents: [],
       events: [],
       magicTokens: new Map(),
@@ -297,6 +316,87 @@ export async function addDocument(moduleRunId: string, url: string, type: string
   await db.insert(documents).values({ moduleRunId, url, type })
 }
 
+/* ---------------- resumable plan drafts ---------------- */
+
+function draftKey(journeyId: string, toolId: string): string {
+  return `${journeyId}:${toolId}`
+}
+
+export async function getPlanDraft(
+  journeyId: string,
+  toolId: string,
+): Promise<PlanDraftRecord | null> {
+  const db = getDb()
+  if (!db) return memory().drafts.get(draftKey(journeyId, toolId)) ?? null
+  const visitor = await ensureVisitor(journeyId)
+  const rows = await db
+    .select()
+    .from(planDrafts)
+    .where(and(eq(planDrafts.visitorId, visitor.id), eq(planDrafts.toolId, toolId)))
+    .limit(1)
+  const row = rows[0]
+  return row
+    ? { toolId: row.toolId, step: row.step, inputs: row.inputs, updatedAt: row.updatedAt.toISOString() }
+    : null
+}
+
+export async function getLatestPlanDraft(journeyId: string): Promise<PlanDraftRecord | null> {
+  const db = getDb()
+  if (!db) {
+    const drafts = [...memory().drafts.entries()]
+      .filter(([key]) => key.startsWith(`${journeyId}:`))
+      .map(([, draft]) => draft)
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    return drafts[0] ?? null
+  }
+  const visitor = await ensureVisitor(journeyId)
+  const rows = await db
+    .select()
+    .from(planDrafts)
+    .where(eq(planDrafts.visitorId, visitor.id))
+    .orderBy(desc(planDrafts.updatedAt))
+    .limit(1)
+  const row = rows[0]
+  return row
+    ? { toolId: row.toolId, step: row.step, inputs: row.inputs, updatedAt: row.updatedAt.toISOString() }
+    : null
+}
+
+export async function upsertPlanDraft(
+  journeyId: string,
+  draft: Pick<PlanDraftRecord, "toolId" | "step" | "inputs">,
+): Promise<void> {
+  const db = getDb()
+  const updatedAt = new Date()
+  if (!db) {
+    memory().drafts.set(draftKey(journeyId, draft.toolId), {
+      ...draft,
+      updatedAt: updatedAt.toISOString(),
+    })
+    return
+  }
+  const visitor = await ensureVisitor(journeyId)
+  await db
+    .insert(planDrafts)
+    .values({ visitorId: visitor.id, ...draft, updatedAt })
+    .onConflictDoUpdate({
+      target: [planDrafts.visitorId, planDrafts.toolId],
+      set: { step: draft.step, inputs: draft.inputs, updatedAt },
+    })
+}
+
+export async function deletePlanDraft(journeyId: string, toolId: string): Promise<void> {
+  const db = getDb()
+  if (!db) {
+    memory().drafts.delete(draftKey(journeyId, toolId))
+    return
+  }
+  const visitor = await ensureVisitor(journeyId)
+  await db
+    .delete(planDrafts)
+    .where(and(eq(planDrafts.visitorId, visitor.id), eq(planDrafts.toolId, toolId)))
+}
+
 /* ---------------- magic links ---------------- */
 
 /** Finds the journey ID for a lead by email (most recent wins). Null-safe: no user enumeration. */
@@ -313,6 +413,7 @@ export async function findJourneyByEmail(email: string): Promise<string | null> 
     .select({ visitorId: leads.visitorId })
     .from(leads)
     .where(eq(leads.email, normalized))
+    .orderBy(desc(leads.createdAt))
     .limit(1)
   if (!rows[0]) return null
   const visitorRows = await db

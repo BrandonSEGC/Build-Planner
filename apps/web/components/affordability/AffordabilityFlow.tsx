@@ -3,7 +3,7 @@
 // Affordability & Construction Loan Calculator — 4 steps + live DTI meter.
 // "See what you can build before you talk to a lender." SEGC is not a lender.
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { computeAffordability, fmt, type AffordabilityState } from "@segc/engines"
 import {
   BreakdownCard,
@@ -23,6 +23,7 @@ import {
 } from "@segc/ui"
 import { useUnlock } from "@/components/shared/useUnlock"
 import { GateStep } from "@/components/shared/GateStep"
+import { usePlanDraft } from "@/components/shared/usePlanDraft"
 
 const TOTAL_STEPS = 4
 
@@ -45,7 +46,25 @@ const INITIAL: AffordabilityInputs = {
 export function AffordabilityFlow() {
   const [step, setStep] = useState(0)
   const [state, setState] = useState<AffordabilityInputs>(INITIAL)
-  const { unlocked, pending, gateError, unlock, lead } = useUnlock("affordability")
+  const prefilled = useRef(false)
+  const { unlocked, pending, gateError, unlock, lead, hydrated, profile } = useUnlock("affordability")
+  const { draftReady, draftRestored } = usePlanDraft({
+    toolId: "affordability",
+    step,
+    inputs: state,
+    maxStep: TOTAL_STEPS - 1,
+    onRestore: (draft) => {
+      setState(draft.inputs)
+      setStep(draft.step)
+    },
+  })
+
+  useEffect(() => {
+    if (!hydrated || !draftReady || prefilled.current) return
+    prefilled.current = true
+    if (draftRestored || !profile.timeline) return
+    setState((current) => ({ ...current, timeline: profile.timeline! }))
+  }, [draftReady, draftRestored, hydrated, profile.timeline])
 
   const result = useMemo(() => computeAffordability(state), [state])
   const range = `${fmt(result.low)}–${fmt(result.high)}`
@@ -85,7 +104,11 @@ export function AffordabilityFlow() {
             </p>
             <DTIMeter dti={result.dti} />
           </div>
-          <PdfConfirmStrip email={unlocked.lead.email} name="affordability report" />
+          <PdfConfirmStrip
+            email={unlocked.lead.email}
+            name="affordability report"
+            downloadHref="/api/plan/pdf"
+          />
           <div className="segc-grid-2">
             <BreakdownCard
               title="The Math"
@@ -124,10 +147,10 @@ export function AffordabilityFlow() {
             to introduce you to construction-loan lenders we trust.
           </div>
           <NextModuleCard
-            title={`AT $285/SQ FT THAT'S ROUGHLY A ${sqftMid.toLocaleString()} SQ FT HOME`}
-            carried="See exactly what it costs — we'll carry your square footage into the estimator."
-            href={`/plan/estimator?sqft=${sqftMid}`}
-            cta="PRICE THAT HOME ›"
+            title="ADD LAND + SITE COSTS TO THE PLAN"
+            carried={`Your budget supports roughly ${sqftMid.toLocaleString()} sq ft — now account for the whole property.`}
+            href="/plan/continue"
+            cta="CONTINUE MY PLAN ›"
           />
           <FunnelBlock
             bookingUrl={process.env.NEXT_PUBLIC_CAL_LINK ?? "https://southeasterngc.com/contact"}

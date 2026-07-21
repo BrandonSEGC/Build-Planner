@@ -1,5 +1,5 @@
 // Magic-link landing: consume the token, re-attach the journey cookie,
-// and land on the dashboard with a welcome-back banner.
+// then continue at the most recently saved or next unfinished chapter.
 
 import { NextResponse, type NextRequest } from "next/server"
 import { consumeMagicToken, recordEvent } from "@/lib/repo"
@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
   }
 
   await recordEvent(journeyId, "magic_link_resumed", {})
-  const response = NextResponse.redirect(new URL("/plan?resumed=1", request.url))
+  const response = NextResponse.redirect(new URL("/plan/continue?resumed=1", request.url))
   response.cookies.set("segc_jid", journeyId, {
     httpOnly: true,
     sameSite: "lax",

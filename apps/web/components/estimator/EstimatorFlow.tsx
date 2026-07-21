@@ -36,6 +36,7 @@ import {
   type Contact,
 } from "@segc/ui"
 import { useBuildProfile } from "@/lib/store"
+import { usePlanDraft } from "@/components/shared/usePlanDraft"
 import { FloorPlan } from "./FloorPlan"
 
 // Generated brand imagery (Higgsfield) served from /public/images.
@@ -120,6 +121,16 @@ export function EstimatorFlow() {
   const [gateError, setGateError] = useState<string | null>(null)
   const prefilled = useRef(false)
   const { hydrate, hydrated, profile, lead, patch } = useBuildProfile()
+  const { draftReady, draftRestored } = usePlanDraft({
+    toolId: "estimator",
+    step,
+    inputs: state,
+    maxStep: TOTAL_STEPS - 1,
+    onRestore: (draft) => {
+      setState(draft.inputs)
+      setStep(draft.step)
+    },
+  })
 
   useEffect(() => {
     void hydrate()
@@ -127,8 +138,9 @@ export function EstimatorFlow() {
 
   // Shared-profile prefill (once, on hydration) + ?style= deep link from the quiz.
   useEffect(() => {
-    if (!hydrated || prefilled.current) return
+    if (!hydrated || !draftReady || prefilled.current) return
     prefilled.current = true
+    if (draftRestored) return
     const params = new URLSearchParams(window.location.search)
     const requestedStyle = params.get("style")
     const requestedSqft = Number(params.get("sqft"))
@@ -146,7 +158,7 @@ export function EstimatorFlow() {
       ...(requestedStyle && STYLE_NAMES[requestedStyle] ? { style: requestedStyle } : {}),
       ...(sqftFromParam ? { sqft: sqftFromParam } : {}),
     }))
-  }, [hydrated, profile])
+  }, [draftReady, draftRestored, hydrated, profile])
 
   const estimate = useMemo(() => computeHomeEstimate(state), [state])
   const range = `${fmt(estimate.low)}–${fmt(estimate.high)}`
@@ -225,7 +237,11 @@ export function EstimatorFlow() {
               Directional planning range · {fmt(estimate.psfEff)} effective cost per sq ft
             </p>
           </div>
-          <PdfConfirmStrip email={unlocked.lead.email} name="custom-home estimate" />
+          <PdfConfirmStrip
+            email={unlocked.lead.email}
+            name="custom-home estimate"
+            downloadHref="/api/plan/pdf"
+          />
           <div className="segc-grid-2">
             <BreakdownCard
               title="Estimate Breakdown"
@@ -251,8 +267,8 @@ export function EstimatorFlow() {
           <NextModuleCard
             title="SEE WHAT FITS YOUR MONTHLY BUDGET"
             carried={`We kept your ${state.sqft.toLocaleString()} sq ft and ${state.tier} finish — check affordability next.`}
-            href="/plan"
-            cta="KEEP PLANNING ›"
+            href="/plan/continue"
+            cta="CONTINUE MY PLAN ›"
           />
           <FunnelBlock
             bookingUrl={process.env.NEXT_PUBLIC_CAL_LINK ?? "https://southeasterngc.com/contact"}

@@ -4,21 +4,20 @@
 
 import { NextResponse, type NextRequest } from "next/server"
 import { getJourneyId } from "@/lib/journey"
-import { INPUT_SCHEMAS, unlockSchema, type ToolId } from "@/lib/schemas"
+import { INPUT_SCHEMAS, unlockSchema } from "@/lib/schemas"
 import { computeModule } from "@/lib/modules"
 import { verifyTurnstile } from "@/lib/integrations/turnstile"
 import { inngest, inngestConfigured } from "@/lib/inngest"
 import { runInlineFulfillment } from "@/lib/fulfill"
-import { createModuleRun, getLead, recordEvent, upsertLead, upsertProfile } from "@/lib/repo"
-
-// Server-side rule: every result screen recommends the next logical module.
-const NEXT_MODULE: Record<ToolId, string> = {
-  estimator: "affordability",
-  style: "estimator",
-  affordability: "land",
-  land: "timeline",
-  timeline: "estimator",
-}
+import { getNextPlanChapter } from "@/lib/planner"
+import {
+  createModuleRun,
+  deletePlanDraft,
+  getLead,
+  recordEvent,
+  upsertLead,
+  upsertProfile,
+} from "@/lib/repo"
 
 export async function POST(request: NextRequest) {
   const journeyId = await getJourneyId()
@@ -72,6 +71,7 @@ export async function POST(request: NextRequest) {
 
   // Shared profile prefill: enter sqft once, it's everywhere.
   await upsertProfile(journeyId, mod.profilePatch)
+  await deletePlanDraft(journeyId, toolId)
 
   await recordEvent(journeyId, "lead_unlocked", { toolId, headline: mod.headline, returning })
 
@@ -95,6 +95,6 @@ export async function POST(request: NextRequest) {
     subline: mod.subline,
     note: mod.note,
     result: mod.outputs,
-    nextModule: NEXT_MODULE[toolId],
+    nextModule: getNextPlanChapter(toolId)?.id ?? "complete",
   })
 }

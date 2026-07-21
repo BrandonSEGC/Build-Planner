@@ -3,7 +3,7 @@
 // Build Timeline Estimator — 3 steps + Gantt with "you are here" marker.
 // "On time isn't a slogan — it's a schedule." Honest TIGHT callout included.
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { computeTimeline, type TimelineState } from "@segc/engines"
 import {
   BreakdownCard,
@@ -24,6 +24,7 @@ import {
 } from "@segc/ui"
 import { useUnlock } from "@/components/shared/useUnlock"
 import { GateStep } from "@/components/shared/GateStep"
+import { usePlanDraft } from "@/components/shared/usePlanDraft"
 
 const TOTAL_STEPS = 4
 
@@ -75,7 +76,30 @@ function quarterOptions(): { value: string; label: string }[] {
 export function TimelineFlow() {
   const [step, setStep] = useState(0)
   const [state, setState] = useState<TimelineState>(INITIAL)
-  const { unlocked, pending, gateError, unlock, lead } = useUnlock("timeline")
+  const prefilled = useRef(false)
+  const { unlocked, pending, gateError, unlock, lead, hydrated, profile } = useUnlock("timeline")
+  const { draftReady, draftRestored } = usePlanDraft({
+    toolId: "timeline",
+    step,
+    inputs: state,
+    maxStep: TOTAL_STEPS - 1,
+    onRestore: (draft) => {
+      setState(draft.inputs)
+      setStep(draft.step)
+    },
+  })
+
+  useEffect(() => {
+    if (!hydrated || !draftReady || prefilled.current) return
+    prefilled.current = true
+    if (draftRestored) return
+    setState((current) => ({
+      ...current,
+      ...(profile.region ? { region: profile.region } : {}),
+      ...(profile.sqft ? { sqft: profile.sqft } : {}),
+      ...(profile.tier ? { tier: profile.tier as TimelineState["tier"] } : {}),
+    }))
+  }, [draftReady, draftRestored, hydrated, profile])
 
   const result = useMemo(() => computeTimeline(state), [state])
   const windowLabel = `${monthYear(result.moveInStart)} – ${monthYear(result.moveInEnd)}`
@@ -150,16 +174,20 @@ export function TimelineFlow() {
               backward-planned from your move-in goal.
             </div>
           )}
-          <PdfConfirmStrip email={unlocked.lead.email} name="build timeline" />
+          <PdfConfirmStrip
+            email={unlocked.lead.email}
+            name="build timeline"
+            downloadHref="/api/plan/pdf"
+          />
           <BreakdownCard
             title="Phase Durations"
             rows={result.phases.map((phase) => [phase.label, `${phase.min}–${phase.max} weeks`] as [string, string])}
           />
           <NextModuleCard
-            title="NOW PRICE THAT SCHEDULE"
-            carried={`We kept your ${state.sqft.toLocaleString()} sq ft ${state.tier} build — see the full cost picture.`}
-            href={`/plan/estimator?sqft=${state.sqft}`}
-            cta="BUILD MY ESTIMATE ›"
+            title="YOUR UNIFIED BUILD PLAN IS READY"
+            carried="Review every chapter together and download one PDF with all of your results."
+            href="/plan/continue"
+            cta="VIEW MY PLAN ›"
           />
           <FunnelBlock
             bookingUrl={process.env.NEXT_PUBLIC_CAL_LINK ?? "https://southeasterngc.com/contact"}
