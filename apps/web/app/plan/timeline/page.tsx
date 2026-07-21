@@ -1,12 +1,13 @@
 import type { Metadata } from "next"
-import { TimelineFlow } from "@/components/timeline/TimelineFlow"
+import { JourneyFlow } from "@/components/journey/JourneyFlow"
 
 export const metadata: Metadata = {
   title: "Custom Home Build Timeline Estimator",
   description:
-    "When can you move in? Get a phase-by-phase custom home construction timeline for North Carolina — design, permits, sitework, framing, finishes — with an honest move-in window.",
+    "When can you move in? A phase-by-phase construction timeline — part of The SEGC Build Planner journey.",
 }
 
-export default function TimelinePage() {
-  return <TimelineFlow />
+// SEO entry door — drops the visitor into the unified journey at the timeline chapter.
+export default function Page() {
+  return <JourneyFlow initialChapter="timeline" />
 }

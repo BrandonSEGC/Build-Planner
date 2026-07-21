@@ -1,12 +1,13 @@
 import type { Metadata } from "next"
-import { StyleQuizFlow } from "@/components/style/StyleQuizFlow"
+import { JourneyFlow } from "@/components/journey/JourneyFlow"
 
 export const metadata: Metadata = {
   title: "Home Style Quiz",
   description:
-    "8 questions. Your architectural identity. Zero math. Discover whether you're Modern Farmhouse, Lowcountry, Craftsman, Modern, Traditional Brick, or Transitional.",
+    "8 questions. Your architectural identity. Zero math — the opening chapter of The SEGC Build Planner.",
 }
 
-export default function StyleQuizPage() {
-  return <StyleQuizFlow />
+// SEO entry door — drops the visitor into the unified journey at the style chapter.
+export default function Page() {
+  return <JourneyFlow initialChapter="style" />
 }

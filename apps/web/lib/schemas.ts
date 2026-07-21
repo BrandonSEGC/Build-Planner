@@ -90,18 +90,63 @@ export const timelineInputsSchema = z.object({
   targetDate: z.string(), // "" or YYYY-MM-DD
 })
 
+// The unified journey — one experience, one gate, one master Build Plan.
+// Land / money / timeline chapters are optional (null = skipped).
+export const planInputsSchema = z.object({
+  quizAnswers: z.array(styleWeights).length(8),
+  home: estimatorInputsSchema,
+  land: z
+    .object({
+      landStatus: z.enum(["owned", "contract", "shopping"]),
+      acreage: z.number().min(0).max(500),
+      landPrice: z.number().min(0).max(10_000_000),
+      clearing: z.string(),
+      topography: z.string(),
+      utilities: z.string(),
+      powerRun: z.string(),
+      driveway: z.string(),
+    })
+    .nullable(),
+  money: z
+    .object({
+      annualIncome: z.number().min(0).max(5_000_000),
+      monthlyDebts: z.number().min(0).max(50_000),
+      credit: z.string(),
+      cash: z.number().min(0).max(5_000_000),
+      landValue: z.number().min(0).max(5_000_000),
+      loanType: z.enum(["ctp", "va", "fha", "conventional"]),
+      termYears: z.number().int().min(10).max(40),
+      rate: z.number().min(0).max(15),
+    })
+    .nullable(),
+  timeline: z
+    .object({
+      stage: z.string(),
+      complexity: z.string(),
+      basement: z.boolean(),
+      pool: z.boolean(),
+      financing: z.string(),
+      targetDate: z.string(),
+    })
+    .nullable(),
+  intent: z.string(), // buying timeline: asap | 0-6 | 6-12 | explore
+})
+
+export type PlanInputs = z.infer<typeof planInputsSchema>
+
 export const INPUT_SCHEMAS = {
   estimator: estimatorInputsSchema,
   affordability: affordabilityInputsSchema,
   land: landBuildInputsSchema,
   style: styleQuizInputsSchema,
   timeline: timelineInputsSchema,
+  plan: planInputsSchema,
 } as const
 
 export type ToolId = keyof typeof INPUT_SCHEMAS
 
 export const unlockSchema = z.object({
-  toolId: z.enum(["estimator", "affordability", "land", "style", "timeline"]),
+  toolId: z.enum(["estimator", "affordability", "land", "style", "timeline", "plan"]),
   contact: contactSchema.nullable(), // null = returning lead, skip the gate
   inputs: z.unknown(), // validated per-tool via INPUT_SCHEMAS in the route
   turnstileToken: z.string().optional(),

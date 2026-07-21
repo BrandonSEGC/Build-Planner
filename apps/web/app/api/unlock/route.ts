@@ -3,13 +3,14 @@
 // per module run via Inngest (durable) or inline (dev fallback).
 
 import { NextResponse, type NextRequest } from "next/server"
+import { STYLE_PROFILES } from "@segc/engines"
 import { getJourneyId } from "@/lib/journey"
 import { INPUT_SCHEMAS, unlockSchema, type ToolId } from "@/lib/schemas"
 import { computeModule } from "@/lib/modules"
 import { verifyTurnstile } from "@/lib/integrations/turnstile"
 import { inngest, inngestConfigured } from "@/lib/inngest"
 import { runInlineFulfillment } from "@/lib/fulfill"
-import { createModuleRun, getLead, recordEvent, upsertLead, upsertProfile } from "@/lib/repo"
+import { createModuleRun, getLead, markRunFulfilled, recordEvent, upsertLead, upsertProfile } from "@/lib/repo"
 
 // Server-side rule: every result screen recommends the next logical module.
 const NEXT_MODULE: Record<ToolId, string> = {
@@ -18,6 +19,7 @@ const NEXT_MODULE: Record<ToolId, string> = {
   affordability: "land",
   land: "timeline",
   timeline: "estimator",
+  plan: "brief",
 }
 
 export async function POST(request: NextRequest) {
@@ -72,6 +74,48 @@ export async function POST(request: NextRequest) {
 
   // Shared profile prefill: enter sqft once, it's everywhere.
   await upsertProfile(journeyId, mod.profilePatch)
+
+  // Unified journey: also record per-chapter runs (pre-fulfilled — the master
+  // plan drives the single PDF/email) so the dashboard lights up per chapter.
+  if (toolId === "plan") {
+    const outputs = mod.outputs as {
+      style: { percentage: number; primary: string }
+      estimate: { low: number; high: number }
+      land: { low: number; high: number } | null
+      afford: { low: number; high: number } | null
+      schedule: { moveInStart: string; moveInEnd: string } | null
+    }
+    const monthYear = (iso: string) =>
+      new Date(iso).toLocaleDateString("en-US", { month: "short", year: "numeric" }).toUpperCase()
+    const chapterRuns: { toolId: string; headline: string }[] = [
+      {
+        toolId: "style",
+        headline: `${outputs.style.percentage}% ${(
+          STYLE_PROFILES[outputs.style.primary as keyof typeof STYLE_PROFILES]?.name ?? outputs.style.primary
+        ).toUpperCase()}`,
+      },
+      { toolId: "estimator", headline: mod.headline },
+      ...(outputs.land
+        ? [{ toolId: "land", headline: `$${Math.round(outputs.land.low).toLocaleString()}–$${Math.round(outputs.land.high).toLocaleString()}` }]
+        : []),
+      ...(outputs.afford
+        ? [{ toolId: "affordability", headline: `$${Math.round(outputs.afford.low).toLocaleString()}–$${Math.round(outputs.afford.high).toLocaleString()}` }]
+        : []),
+      ...(outputs.schedule
+        ? [{ toolId: "timeline", headline: `${monthYear(outputs.schedule.moveInStart)} – ${monthYear(outputs.schedule.moveInEnd)}` }]
+        : []),
+    ]
+    for (const chapter of chapterRuns) {
+      const chapterRun = await createModuleRun({
+        journeyId,
+        toolId: chapter.toolId,
+        inputs: { fromPlanRun: run.id },
+        outputs: { fromPlanRun: run.id },
+        headlineResult: chapter.headline,
+      })
+      await markRunFulfilled(chapterRun.id)
+    }
+  }
 
   await recordEvent(journeyId, "lead_unlocked", { toolId, headline: mod.headline, returning })
 

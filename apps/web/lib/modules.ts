@@ -18,7 +18,7 @@ import {
   type TimelineState,
 } from "@segc/engines"
 import type { ProfileRecord } from "./repo"
-import type { ToolId } from "./schemas"
+import type { PlanInputs, ToolId } from "./schemas"
 
 export interface ModuleResult {
   outputs: unknown
@@ -28,14 +28,170 @@ export interface ModuleResult {
   note: string
   profilePatch: ProfileRecord
   timelineIntent: string
+  /** Master Build Plan only: rows grouped by chapter for the sectioned PDF/email. */
+  sections?: { title: string; rows: [string, string][] }[]
 }
 
 function monthYear(iso: string): string {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", year: "numeric" }).toUpperCase()
 }
 
+/** Affordability fit — the payoff of unification: budget vs. build cost in one verdict. */
+export function affordabilityFit(
+  affordHigh: number,
+  estimateLow: number,
+  estimateHigh: number,
+): { verdict: "FITS" | "STRETCH" | "GAP"; line: string } {
+  if (affordHigh >= estimateHigh) {
+    return { verdict: "FITS", line: "Your comfortable budget covers this build — you're shopping in the right range." }
+  }
+  if (affordHigh >= estimateLow) {
+    return {
+      verdict: "STRETCH",
+      line: "Your budget reaches the low end of this build — tier or square-footage trims close the gap.",
+    }
+  }
+  return {
+    verdict: "GAP",
+    line: "This configuration is above your comfortable budget — let's talk about what changes close the distance.",
+  }
+}
+
+export function computePlan(inputs: PlanInputs): ModuleResult {
+  // 1. Style — always present (chapter 1).
+  const styleResult = scoreStyleQuiz(inputs.quizAnswers)
+  const primaryStyle = STYLE_PROFILES[styleResult.primary]
+  const secondaryStyle = STYLE_PROFILES[styleResult.secondary]
+
+  // 2. Home — always present; style comes from the quiz.
+  const home = { ...inputs.home, style: styleResult.primary }
+  const estimate = computeHomeEstimate(home)
+  const regionName = HOME_CONFIG.regions.find((r) => r.id === home.region)?.name ?? home.region
+  const headline = `${fmt(estimate.low)}–${fmt(estimate.high)}`
+
+  const sections: { title: string; rows: [string, string][] }[] = [
+    {
+      title: "YOUR STYLE",
+      rows: [
+        ["Primary", `${styleResult.percentage}% ${primaryStyle.name}`],
+        ["Secondary", secondaryStyle.name],
+        ["Style DNA", primaryStyle.dna.join(" · ")],
+      ],
+    },
+    {
+      title: "YOUR HOME",
+      rows: [
+        ["Planning range", headline],
+        ["Effective cost / sq ft", fmt(estimate.psfEff)],
+        ["Footprint", `${home.sqft.toLocaleString("en-US")} sq ft · ${home.stories} story · ${regionName}`],
+        ["Base construction", fmt(estimate.shell)],
+        ["Finishes + features", fmt(estimate.interiorAdds)],
+        ["Soft costs + contingency", fmt(estimate.soft + estimate.contingency)],
+      ],
+    },
+  ]
+
+  // 3. Land & site — optional chapter.
+  let land: ReturnType<typeof computeLandBuild> | null = null
+  if (inputs.land) {
+    land = computeLandBuild({
+      region: home.region,
+      sqft: home.sqft,
+      tier: home.tier,
+      garage: home.garage,
+      ...inputs.land,
+    })
+    const siteLandPct = Math.round(land.percentages.land + land.percentages.site)
+    sections.push({
+      title: "LAND + ALL-IN",
+      rows: [
+        ["All-in range (land + site + build + soft)", `${fmt(land.low)}–${fmt(land.high)}`],
+        ["Land", `${fmt(land.land)} (${Math.round(land.percentages.land)}%)`],
+        ["Site work", `${fmt(land.site)} (${Math.round(land.percentages.site)}%)`],
+        ["Share going to land + site", `${siteLandPct}% — lot selection matters`],
+      ],
+    })
+  }
+
+  // 4. Money — optional chapter, plus the fit verdict.
+  let afford: ReturnType<typeof computeAffordability> | null = null
+  let fit: ReturnType<typeof affordabilityFit> | null = null
+  if (inputs.money) {
+    afford = computeAffordability({ ...inputs.money })
+    fit = affordabilityFit(afford.high, estimate.low, estimate.high)
+    sections.push({
+      title: "YOUR BUDGET",
+      rows: [
+        ["Comfortable build budget", `${fmt(afford.low)}–${fmt(afford.high)}`],
+        ["Est. monthly P&I", `${fmt(afford.piPayment)} / mo`],
+        ["Debt-to-income", `${afford.dti.toFixed(1)}%`],
+        ["Budget vs. this build", `${fit.verdict} — ${fit.line}`],
+      ],
+    })
+  }
+
+  // 5. Timeline — optional chapter.
+  let schedule: ReturnType<typeof computeTimeline> | null = null
+  if (inputs.timeline) {
+    schedule = computeTimeline({
+      region: home.region,
+      sqft: home.sqft,
+      tier: home.tier,
+      ...inputs.timeline,
+    })
+    sections.push({
+      title: "YOUR TIMELINE",
+      rows: [
+        ["Estimated move-in window", `${monthYear(schedule.moveInStart)} – ${monthYear(schedule.moveInEnd)}`],
+        ["Total duration", `${schedule.minWeeks}–${schedule.maxWeeks} weeks`],
+        ...(inputs.timeline.targetDate
+          ? ([["Design must start by", monthYear(schedule.designStartBy)]] as [string, string][])
+          : []),
+        ...(schedule.tight ? ([["Honest note", "THAT TARGET IS TIGHT — see the window above."]] as [string, string][]) : []),
+      ],
+    })
+  }
+
+  const completed = ["style", "home", inputs.land && "land", inputs.money && "money", inputs.timeline && "timeline"]
+    .filter(Boolean)
+    .join(", ")
+
+  return {
+    outputs: {
+      style: styleResult,
+      estimate,
+      land,
+      afford,
+      fit,
+      schedule,
+      completedChapters: completed.split(", "),
+    },
+    headline,
+    subline: `${styleResult.percentage}% ${primaryStyle.name} · ${home.sqft.toLocaleString("en-US")} sq ft · ${regionName}${fit ? ` · budget ${fit.verdict}` : ""}`,
+    rows: sections.flatMap((section) => [
+      [`— ${section.title} —`, ""] as [string, string],
+      ...section.rows,
+    ]),
+    note: fit
+      ? fit.line
+      : "This is your master planning document — every number is directional and every next step is one call away.",
+    profilePatch: {
+      region: home.region,
+      sqft: home.sqft,
+      tier: home.tier,
+      style: styleResult.primary,
+      timeline: inputs.intent,
+      landStatus: inputs.land?.landStatus ?? (home.ownLand === "yes" ? "owned" : "shopping"),
+    },
+    timelineIntent: inputs.intent,
+    sections,
+  }
+}
+
 export function computeModule(toolId: ToolId, inputs: unknown): ModuleResult {
   switch (toolId) {
+    case "plan":
+      return computePlan(inputs as PlanInputs)
     case "estimator": {
       const state = inputs as HomeEstimateState
       const e = computeHomeEstimate(state)
@@ -164,4 +320,5 @@ export const TOOL_PDF_TYPES: Record<ToolId, string> = {
   land: "land-build-estimate",
   style: "style-profile",
   timeline: "build-timeline",
+  plan: "master-build-plan",
 }

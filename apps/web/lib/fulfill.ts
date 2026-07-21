@@ -6,7 +6,7 @@
 
 import { computeHomeEstimate, fmt, HOME_CONFIG, STYLE_PROFILES, type HomeEstimateState } from "@segc/engines"
 import { estimateResultEmail, moduleResultEmail } from "@segc/emails"
-import { renderEstimatePdf, renderModulePdf } from "@segc/pdf"
+import { renderEstimatePdf, renderModulePdf, renderPlanPdf } from "@segc/pdf"
 import { sendEmail } from "./integrations/email"
 import { sendSlackLeadAlert } from "./integrations/slack"
 import { upsertHubspotContact } from "./integrations/hubspot"
@@ -29,6 +29,7 @@ export const TOOL_LABELS: Record<string, string> = {
   land: "Land + Build Estimator",
   style: "Home Style Quiz",
   timeline: "Build Timeline Estimator",
+  plan: "The Build Plan Journey",
 }
 
 export const TOOL_REPORT_LABELS: Record<string, string> = {
@@ -37,6 +38,7 @@ export const TOOL_REPORT_LABELS: Record<string, string> = {
   land: "LAND + BUILD ALL-IN ESTIMATE",
   style: "STYLE PROFILE",
   timeline: "BUILD TIMELINE",
+  plan: "MASTER BUILD PLAN",
 }
 
 export function bookingUrl(): string {
@@ -94,6 +96,20 @@ export async function stepRenderPdf(ctx: FulfillmentContext): Promise<Buffer> {
   }
 
   const mod = computeModule(toolId, run.inputs)
+
+  if (toolId === "plan" && mod.sections) {
+    return renderPlanPdf({
+      name: lead.name,
+      headline: mod.headline,
+      subline: mod.subline,
+      sections: mod.sections,
+      note: mod.note,
+      bookingUrl: bookingUrl(),
+      briefUrl: briefUrl(),
+      generatedAt,
+    })
+  }
+
   return renderModulePdf({
     toolLabel: TOOL_REPORT_LABELS[toolId] ?? toolId,
     name: lead.name,
