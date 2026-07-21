@@ -6,12 +6,12 @@ land, style, and timeline, with one shared visitor profile and one gate.
 
 Companion docs: `SEGC_Build_Planner_Concept.md` (features) · `SEGC_Build_Planner_Stack.md` (architecture) · `SEGC_Design_Agent_Brief.md` (design).
 
-## Status — Build Phase 2 complete
+## Status — Unified planner live
 
 - ✅ **Phase 1 — Foundation**: pnpm monorepo, Drizzle schema (Neon), journey-ID middleware, design system (`packages/ui`), hub shell at `/plan`.
 - ✅ **Phase 2 — Flagship**: Cost Estimator end-to-end — 8 steps, live blurred estimate, gate, server-computed unlock, fulfillment pipeline (PDF → R2 → email → Slack → HubSpot) via Inngest with an inline dev fallback.
-- ⬜ Phase 3 — Modules 2–5 (engines already ported to `packages/engines`, tested).
-- ⬜ Phase 4 — Dashboard result cards, magic links, native brief.
+- ✅ **Phase 3 — Unified planner**: Style, cost, affordability, land, and timeline are connected chapters of one guided plan with shared answers and automatic draft saves.
+- ✅ **Phase 4 — Continuity + exports**: Magic-link resume returns to the saved chapter, dashboard result summaries are live, and users can export one combined Build Plan PDF.
 - ⬜ Phase 5 — Admin, PostHog, Turnstile widget, domain auth, redirects.
 
 ## Layout
@@ -43,13 +43,13 @@ integration at a time.
 ## The spine (how a lead flows)
 
 1. Middleware issues an httpOnly `segc_jid` cookie (the anonymous journey).
-2. Visitor configures a home; the SpecPanel shows a **blurred** live range.
+2. The visitor follows one five-chapter plan. Inputs and the current step auto-save so the journey can resume on another device by magic link.
 3. Gate submit → `POST /api/unlock`: Zod-validated, Turnstile-checked (when configured),
    result **recomputed server-side**, lead + module_run written, profile updated.
 4. Fulfillment (Inngest `lead/unlocked`, or inline in dev): render PDF → upload R2 →
    email via Resend (PDF attached) → Slack #leads alert → HubSpot upsert → mark fulfilled.
    Every step idempotent per module_run.
-5. Returning visitors skip the gate everywhere; each completion enriches the same lead.
+5. Returning visitors skip the gate everywhere; each completion enriches the same lead. The dashboard combines the latest chapter results into one downloadable PDF.
 
 ## Pricing truth
 

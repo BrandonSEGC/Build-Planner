@@ -616,22 +616,50 @@ export function BreakdownCard({ title, rows }: { title: string; rows: [string, s
   )
 }
 
-export function PdfConfirmStrip({ email, name }: { email: string; name: string }) {
+export function PdfConfirmStrip({
+  email,
+  name,
+  downloadHref,
+}: {
+  email: string
+  name: string
+  downloadHref?: string
+}) {
   return (
     <div
       style={{
+        alignItems: "center",
         background: "rgba(244,178,20,.08)",
         border: "1px dashed var(--segc-gold)",
         borderRadius: tokens.radTag,
         color: tokens.ink,
+        display: "flex",
+        flexWrap: "wrap",
         fontFamily: tokens.body,
         fontSize: 13,
+        gap: 14,
+        justifyContent: "space-between",
         lineHeight: 1.45,
         padding: "14px 16px",
       }}
     >
-      <strong style={{ fontFamily: tokens.display, textTransform: "uppercase" }}>⚑ CHECK YOUR INBOX — </strong>
-      We just emailed your {name} to {email}.
+      <span>
+        <strong style={{ fontFamily: tokens.display, textTransform: "uppercase" }}>⚑ RESULT SAVED — </strong>
+        We emailed your {name} to {email}.
+      </span>
+      {downloadHref && (
+        <a
+          href={downloadHref}
+          style={{
+            color: tokens.brown,
+            fontFamily: tokens.display,
+            fontWeight: 700,
+            textTransform: "uppercase",
+          }}
+        >
+          DOWNLOAD MY PLAN PDF ↓
+        </a>
+      )}
     </div>
   )
 }

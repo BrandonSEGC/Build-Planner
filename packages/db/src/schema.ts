@@ -8,6 +8,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core"
 
@@ -71,6 +72,21 @@ export const moduleRuns = pgTable(
     fulfilledAt: timestamp("fulfilled_at", { withTimezone: true }),
   },
   (table) => [index("module_runs_visitor_idx").on(table.visitorId, table.toolId)],
+)
+
+export const planDrafts = pgTable(
+  "plan_drafts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    visitorId: uuid("visitor_id")
+      .notNull()
+      .references(() => visitors.id, { onDelete: "cascade" }),
+    toolId: text("tool_id").notNull(),
+    step: integer("step").notNull().default(0),
+    inputs: jsonb("inputs").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex("plan_drafts_visitor_tool_idx").on(table.visitorId, table.toolId)],
 )
 
 export const documents = pgTable("documents", {
