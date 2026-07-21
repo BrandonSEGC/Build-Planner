@@ -7,7 +7,7 @@ import { getPlanDraft, upsertPlanDraft } from "@/lib/repo"
 const draftSchema = z.object({
   toolId: z.enum(["style", "estimator", "affordability", "land", "timeline"]),
   step: z.number().int().min(0).max(20),
-  inputs: z.unknown(),
+  inputs: z.object({}).passthrough(),
 })
 
 export async function GET(request: NextRequest) {
